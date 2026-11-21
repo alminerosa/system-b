@@ -1,7 +1,7 @@
 // Service worker : permet d'ouvrir l'appli même avec une mauvaise connexion.
 // Stratégie « réseau d'abord » : tu as toujours la dernière version si tu es en ligne,
 // et la copie en cache sinon. Les appels à Supabase ne passent pas par ici.
-const CACHE = 'systeme-b-v1';
+const CACHE = 'systeme-b-v2';
 const SHELL = [
   './', 'index.html', 'style.css', 'app.js', 'config.js',
   'manifest.webmanifest', 'icon-192.png', 'icon-512.png'

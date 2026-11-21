@@ -92,6 +92,7 @@
   let pendingImage = null;
   let removeImage = false;
   let previewObjectUrl = null;
+  let fromCapture = false;
 
   // ---------------------------------------------------------------
   // Démarrage
@@ -306,6 +307,7 @@
 
   async function openSheet(item) {
     editing = item || null;
+    fromCapture = false;
     pendingImage = null;
     removeImage = false;
     if (previewObjectUrl) { URL.revokeObjectURL(previewObjectUrl); previewObjectUrl = null; }
@@ -406,6 +408,7 @@
         tags: parseTags($('#f-tags').value),
         image_path: imagePath,
       };
+      if (!editing && fromCapture) payload.source = 'capture';
 
       const q = sb.from('items');
       const { data, error } = editing
@@ -443,6 +446,130 @@
   }
 
   // ---------------------------------------------------------------
+  // Analyse par IA (fonction Supabase « analyze »)
+  // ---------------------------------------------------------------
+  const AI_MEDIA = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+  let aiBusy = false;
+
+  function setAiBusy(busy) {
+    aiBusy = busy;
+    $('#fab-capture').disabled = busy;
+    $('#f-ai').disabled = busy;
+    $('#fab-capture').textContent = busy ? 'Analyse…' : 'Capturer';
+    $('#f-ai-label').textContent = busy ? 'Analyse en cours…' : "Remplir avec l'IA";
+  }
+
+  function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+      reader.onerror = () => reject(new Error('Lecture de l’image impossible'));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function runAnalysis({ blob, text }) {
+    const counts = {};
+    for (const it of items) for (const t of it.tags || []) counts[t] = (counts[t] || 0) + 1;
+    const existingTags = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 60).map(([t]) => t);
+
+    const body = { text: (text || '').slice(0, 4000), existing_tags: existingTags };
+    if (blob) {
+      if (!AI_MEDIA.includes(blob.type)) {
+        throw new Error('Format d’image non pris en charge (utilise une capture JPEG ou PNG)');
+      }
+      body.image_base64 = await blobToBase64(blob);
+      body.media_type = blob.type;
+    }
+
+    const { data, error } = await sb.functions.invoke('analyze', { body });
+    if (error) {
+      let msg = errMsg(error);
+      try {
+        const detail = await error.context.json();
+        if (detail && detail.error) msg = detail.error;
+      } catch (_) { /* pas de détail lisible */ }
+      throw new Error(msg);
+    }
+    if (!data || data.error) throw new Error((data && data.error) || 'Réponse vide');
+    return data;
+  }
+
+  // Remplit seulement les champs encore vides : ce que tu as déjà saisi n'est jamais écrasé.
+  function applySuggestion(s) {
+    const typeSel = $('#f-type');
+    if (typeSel.value === 'note' && TYPES[s.type]) {
+      typeSel.value = s.type;
+      updateTypeDependentFields();
+    }
+    const firstStatus = ((TYPES[typeSel.value] || {}).statuses || [])[0];
+    if (!editing && firstStatus && !$('#f-status').value) $('#f-status').value = firstStatus;
+
+    if (!$('#f-title').value.trim() && s.title) $('#f-title').value = s.title;
+    if (!$('#f-content').value.trim() && s.content) $('#f-content').value = s.content;
+    if (!$('#f-url').value.trim() && s.url) $('#f-url').value = s.url;
+    if (!$('#f-date').value && s.event_date) $('#f-date').value = s.event_date;
+
+    const merged = [...new Set([...parseTags($('#f-tags').value), ...(s.tags || [])])];
+    $('#f-tags').value = merged.join(', ');
+  }
+
+  // Bouton « Capturer » : photo choisie -> analyse -> fiche pré-remplie
+  async function captureFromFile(file) {
+    if (aiBusy || !file) return;
+    setAiBusy(true);
+    let blob = null;
+    let suggestion = null;
+    let failure = null;
+    try {
+      blob = await shrinkImage(file);
+      suggestion = await runAnalysis({ blob });
+    } catch (e) {
+      failure = e;
+    }
+    setAiBusy(false);
+
+    await openSheet(null);
+    $('#f-type').value = 'note';
+    updateTypeDependentFields();
+    if (blob) {
+      pendingImage = blob;
+      removeImage = false;
+      previewObjectUrl = URL.createObjectURL(blob);
+      showImagePreview(previewObjectUrl);
+    }
+    fromCapture = true;
+
+    if (suggestion) {
+      applySuggestion(suggestion);
+      toast('Fiche pré-remplie : vérifie puis enregistre');
+    } else {
+      toast('Analyse impossible : ' + errMsg(failure) + ' (tu peux remplir à la main)', true);
+    }
+  }
+
+  // Bouton « Remplir avec l'IA » dans la fiche : image choisie + texte déjà saisi
+  async function fillWithAi() {
+    if (aiBusy) return;
+    const text = [$('#f-title').value, $('#f-content').value, $('#f-url').value]
+      .map((s) => s.trim()).filter(Boolean).join('\n');
+    if (!pendingImage && !text) {
+      toast('Ajoute d’abord une image, un texte ou un lien', true);
+      return;
+    }
+    setAiBusy(true);
+    try {
+      const suggestion = await runAnalysis({ blob: pendingImage, text });
+      applySuggestion(suggestion);
+      toast('Champs remplis : vérifie avant d’enregistrer');
+    } catch (e) {
+      toast(errMsg(e), true);
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  // ---------------------------------------------------------------
   // Branchements
   // ---------------------------------------------------------------
   function bindUi() {
@@ -467,6 +594,13 @@
 
     $('#q').addEventListener('input', (ev) => { query = ev.target.value; renderList(); });
     $('#fab').addEventListener('click', () => openSheet(null));
+    $('#fab-capture').addEventListener('click', () => { if (!aiBusy) $('#capture-input').click(); });
+    $('#capture-input').addEventListener('change', (ev) => {
+      const file = ev.target.files && ev.target.files[0];
+      ev.target.value = '';
+      if (file) captureFromFile(file);
+    });
+    $('#f-ai').addEventListener('click', fillWithAi);
 
     $('#sheet').addEventListener('submit', saveItem);
     $('#sheet-close').addEventListener('click', closeSheet);

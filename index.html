@@ -53,7 +53,11 @@
 
     <main id="list" class="list"></main>
 
-    <button id="fab" type="button" aria-label="Ajouter un élément">+</button>
+    <div class="fab-group">
+      <button id="fab-capture" type="button" class="fab-pill">Capturer</button>
+      <button id="fab" type="button" aria-label="Ajouter un élément">+</button>
+    </div>
+    <input type="file" id="capture-input" accept="image/*" hidden>
   </div>
 
   <!-- Fiche : ajout / modification -->
@@ -63,6 +67,11 @@
         <h2 id="sheet-title">Nouvel élément</h2>
         <button type="button" id="sheet-close" class="ghost" aria-label="Fermer">Fermer</button>
       </div>
+
+      <button type="button" id="f-ai" class="ai-btn">
+        <span id="f-ai-label">Remplir avec l'IA</span>
+        <span class="muted">image, texte ou lien</span>
+      </button>
 
       <div class="row">
         <label class="grow">Type

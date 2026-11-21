@@ -163,10 +163,44 @@ button { font: inherit; cursor: pointer; }
 .stars-inline { letter-spacing: 1px; color: var(--accent); }
 
 /* ----- Bouton + ----- */
-#fab {
+.fab-group {
   position: fixed;
   right: 18px;
   bottom: calc(18px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 6;
+}
+.fab-pill {
+  height: 48px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--bg);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+}
+.fab-pill:disabled { opacity: 0.6; }
+.ai-btn {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 14px;
+  padding: 11px 12px;
+  background: none;
+  color: var(--accent);
+  border: 1px dashed var(--accent);
+  border-radius: 10px;
+  font-weight: 600;
+}
+.ai-btn .muted { font-size: 0.8rem; }
+.ai-btn:disabled { opacity: 0.6; }
+#fab {
+  flex: none;
   width: 56px;
   height: 56px;
   border-radius: 50%;
@@ -176,7 +210,6 @@ button { font: inherit; cursor: pointer; }
   font-size: 2rem;
   line-height: 1;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
-  z-index: 6;
 }
 
 /* ----- Fiche (bottom sheet) ----- */
